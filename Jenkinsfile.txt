@@ -1,0 +1,121 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'Maven-3.9'
+    }
+
+    environment {
+        ARTIFACTORY_URL = 'https://artifactory.company.com'
+        APP_NAME        = 'sample-app'
+        VERSION         = "${BUILD_NUMBER}"
+    }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/org/sample-app.git'
+            }
+        }
+
+        stage('Maven Build') {
+            steps {
+                sh 'mvn clean compile'
+            }
+        }
+
+        stage('Maven Test') {
+            steps {
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh 'mvn package -DskipTests'
+            }
+        }
+
+        stage('Publish Artifactory') {
+            steps {
+                sh """
+                   mvn deploy \
+                   -DaltDeploymentRepository=artifactory::default::${ARTIFACTORY_URL}/libs-release-local
+                """
+            }
+        }
+
+        stage('Deploy DEV') {
+            steps {
+                sh './deploy.sh dev'
+            }
+        }
+
+        /************************
+         * MANUAL APPROVALS
+         ************************/
+
+        stage('Approve SYS') {
+            steps {
+                input message: 'Approve deployment to SYS?',
+                      ok: 'Deploy SYS'
+            }
+        }
+
+        stage('Deploy SYS') {
+            steps {
+                sh './deploy.sh sys'
+                echo "Deployment is completed"
+            }
+        }
+
+        stage('Approve UAT') {
+            steps {
+                input message: 'Approve deployment to UAT?',
+                      ok: 'Deploy UAT'
+            }
+        }
+
+        stage('Deploy UAT') {
+            steps {
+                sh './deploy.sh uat'
+                echo "Deployment is completed in UAT"
+            }
+        }
+
+        stage('Approve PROD') {
+            steps {
+                input message: 'Approve deployment to PROD?',
+                      ok: 'Deploy PROD'
+            }
+        }
+
+        stage('Deploy PROD') {
+            steps {
+                sh './deploy.sh prod'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully'
+        }
+
+        failure {
+            echo 'Pipeline failed'
+        }
+    }
+}
