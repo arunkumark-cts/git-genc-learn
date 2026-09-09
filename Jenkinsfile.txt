@@ -91,6 +91,7 @@ pipeline {
         stage('Deploy UAT') {
             steps {
                 sh './deploy.sh uat'
+                echo "Deployment is completed in UAT"
             }
         }
 
